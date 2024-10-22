@@ -38,3 +38,9 @@ build/
 .DS_Store
 
 .idea
+
+Cache.class
+Client.class
+Server.class
+SnwTransport.class
+TcpTransport.class
