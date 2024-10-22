@@ -1,14 +1,14 @@
 import java.io.*;
 import java.net.*;
 
-public class TcpTransport implements Transport {
+public class tcp_transport implements transport {
     private Socket socket;
     private BufferedReader in;
     private PrintWriter out;
     private DataInputStream dataIn;
     private DataOutputStream dataOut;
 
-    public TcpTransport(Socket socket) throws IOException {
+    public tcp_transport(Socket socket) throws IOException {
         this.socket = socket;
         this.in = new BufferedReader(
                 new InputStreamReader(socket.getInputStream()));

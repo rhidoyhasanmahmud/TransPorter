@@ -6,18 +6,18 @@ echo "Compiling Transport.java..."
 javac Transport.java
 
 echo "Compiling TcpTransport.java..."
-javac TcpTransport.java
+javac tcp_transport.java
 
 echo "Compiling SnwTransport.java..."
-javac SnwTransport.java
+javac snw_transport.java
 
 echo "Compiling Cache.java..."
-javac Cache.java
+javac cache.java
 
 echo "Compiling Client.java..."
-javac Client.java
+javac client.java
 
 echo "Compiling Server.java..."
-javac Server.java
+javac server.java
 
 echo "Compilation completed successfully."

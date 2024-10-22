@@ -2,12 +2,12 @@ import java.io.*;
 import java.net.*;
 import java.nio.file.*;
 
-public class Client {
+public class client {
     private static final String SERVER_ADDRESS = "localhost";
-    private static final int PORT = 12345;
-    private Transport transport;
+    private static final int PORT = 4040;
+    private transport transport;
 
-    public Client(Transport transport) {
+    public client(transport transport) {
         this.transport = transport;
     }
 
@@ -89,10 +89,10 @@ public class Client {
         try {
             Socket socket = new Socket(SERVER_ADDRESS, PORT);
             // Choose transport implementation
-            Transport transport = new TcpTransport(socket);
+            transport transport = new tcp_transport(socket);
             // Or use Stop-and-Wait:
             // Transport transport = new SnwTransport(socket);
-            Client client = new Client(transport);
+            client client = new client(transport);
             client.start();
         } catch (IOException e) {
             e.printStackTrace();

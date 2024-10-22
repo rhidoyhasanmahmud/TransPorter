@@ -1,13 +1,13 @@
 import java.io.*;
 import java.net.*;
 
-public class SnwTransport implements Transport {
+public class snw_transport implements transport {
     private Socket socket;
     private DataInputStream dataIn;
     private DataOutputStream dataOut;
     private static final int CHUNK_SIZE = 1024; // For Stop-and-Wait protocol
 
-    public SnwTransport(Socket socket) throws IOException {
+    public snw_transport(Socket socket) throws IOException {
         this.socket = socket;
         this.dataIn = new DataInputStream(socket.getInputStream());
         this.dataOut = new DataOutputStream(socket.getOutputStream());

@@ -2,12 +2,12 @@ import java.io.*;
 import java.net.*;
 import java.nio.file.*;
 
-public class Server {
-    private static final int PORT = 12345;
-    private Cache cache;
+public class server {
+    private static final int PORT = 4040;
+    private cache cache;
 
-    public Server() {
-        cache = new Cache();
+    public server() {
+        cache = new cache();
     }
 
     public void start() throws IOException {
@@ -15,7 +15,6 @@ public class Server {
             System.out.println("Server started on port " + PORT);
             while (true) {
                 Socket clientSocket = serverSocket.accept();
-                // Use virtual threads (Java 21) or regular threads
                 Thread.startVirtualThread(() -> {
                     try {
                         handleClient(clientSocket);
@@ -28,15 +27,16 @@ public class Server {
     }
 
     private void handleClient(Socket socket) throws IOException {
-        try (Transport transport = new TcpTransport(socket)) {
-            // Or use Stop-and-Wait:
-            // Transport transport = new SnwTransport(socket);
+        try (transport transport = new tcp_transport(socket)) {
+
+            // Or use Stop-and-Wait: -> snw_transport
+            // Or use TCP: -> tcp_transport
+
             String command;
             while ((command = transport.receive()) != null) {
                 if (command.startsWith("put ")) {
                     String filename = command.substring(4).trim();
                     transport.send("READY");
-                    // Receive file size from client
                     String sizeStr = transport.receive();
                     long fileSize = Long.parseLong(sizeStr);
                     // Send acknowledgment
@@ -89,7 +89,7 @@ public class Server {
 
     public static void main(String[] args) {
         try {
-            Server server = new Server();
+            server server = new server();
             server.start();
         } catch (IOException e) {
             e.printStackTrace();

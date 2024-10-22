@@ -1,6 +1,6 @@
 import java.io.IOException;
 
-public interface Transport extends AutoCloseable {
+public interface transport extends AutoCloseable {
     void send(String message) throws IOException;
     String receive() throws IOException;
     void sendFile(byte[] data) throws IOException;

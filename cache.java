@@ -1,9 +1,9 @@
 import java.util.concurrent.ConcurrentHashMap;
 
-public class Cache {
+public class cache {
     private ConcurrentHashMap<String, byte[]> cache;
 
-    public Cache() {
+    public cache() {
         cache = new ConcurrentHashMap<>();
     }
 
