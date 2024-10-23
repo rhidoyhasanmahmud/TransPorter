@@ -54,7 +54,7 @@ public class Client {
                 transport.send(command);
                 System.out.println(transport.receive());
             }
-            System.out.println("Enter next command:");
+            System.out.println("Enter next command (put filename / get filename / quit):");
         }
         transport.close();
     }
@@ -62,29 +62,24 @@ public class Client {
     private void handlePut(String filename) throws IOException {
         Path filePath = Paths.get("client_files", filename);
         if (!Files.exists(filePath)) {
-            System.out.println("File '" + filename +
-                    "' does not exist in client_files directory.");
+            System.out.println("File does not exist");
             return;
         }
-        System.out.println("Sending PUT request for: " + filename);
         transport.send("put " + filename);
         String response = transport.receive();
-        System.out.println("Server response: " + response);
         if ("READY".equals(response)) {
             byte[] data = Files.readAllBytes(filePath);
             transport.send(String.valueOf(data.length));
             response = transport.receive();
-            System.out.println("Server response: " + response);
             if (!"SIZE_RECEIVED".equals(response)) {
                 System.out.println("Server did not acknowledge file size.");
                 return;
             }
             transport.sendFile(data);
             String serverResponse = transport.receive();
-            System.out.println("Server response: " + serverResponse);
             if ("UPLOAD_SUCCESS".equals(serverResponse)) {
                 Files.delete(filePath);
-                System.out.println("File '" + filename + "' uploaded and moved to server successfully.");
+                System.out.println("File Upload Successfully");
             } else {
                 System.out.println("Server response: " + serverResponse);
             }
@@ -94,23 +89,26 @@ public class Client {
     }
 
     private void handleGet(String filename) throws IOException {
-        System.out.println("Sending GET request for: " + filename);
         transport.send("get " + filename);
         String response = transport.receive();
-        System.out.println("Server response: " + response);
         if ("READY".equals(response)) {
             String deliverySource = transport.receive();
-            System.out.println("Delivery source: " + deliverySource);
             byte[] data = transport.receiveFile();
-            System.out.println("Received file data");
             Files.write(Paths.get("client_files", filename), data);
-            System.out.println("File '" + filename + "' downloaded successfully from " + deliverySource);
+            if ("server".equalsIgnoreCase(deliverySource)) {
+                System.out.println("File delivered from server");
+            } else if ("cache".equalsIgnoreCase(deliverySource)) {
+                System.out.println("File delivered from cache");
+            } else {
+                System.out.println("File delivered from unknown source");
+            }
         } else if (response.startsWith("ERROR:")) {
-            System.out.println(response);
+            System.out.println("File not found");
         } else {
-            System.out.println("Unexpected server response: " + response);
+            System.out.println("Unexpected server response");
         }
     }
+
 
     public static void main(String[] args) {
         try {

@@ -87,14 +87,10 @@ public class Server {
         }
 
         if (data != null) {
-            System.out.println("Sending READY to client");
             transport.send("READY");
-            System.out.println("Sending delivery source to client");
             transport.send(deliverySource);
-            System.out.println("Sending file data to client");
             transport.sendFile(data);
         } else {
-            System.out.println("Sending error message to client");
             transport.send("ERROR: File '" + filename + "' not found on server.");
         }
     }
