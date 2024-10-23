@@ -39,9 +39,9 @@ build/
 
 .idea
 
-cache.class
-client.class
-server.class
-snw_transport.class
-tcp_transport.class
-transport.class
+CacheService.class
+Server.class
+Client.class
+Transport.class
+SnwTransport.class
+TcpTransport.class
