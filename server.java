@@ -1,18 +1,24 @@
 import java.io.*;
 import java.net.*;
 import java.nio.file.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-public class Server {
-    private int port;
-    private int cachePort;
-    private String cacheIp;
-    private String protocol;
+public class server {
+    private final int port;
+    private final int cachePort;
+    private final String cacheIp;
+    private final String protocol;
+    private final ExecutorService executor;
+    private final CacheManager cacheManager;
 
-    public Server(int port, String protocol, String cacheIp, int cachePort) {
+    public server(int port, String protocol, String cacheIp, int cachePort) throws IOException {
         this.port = port;
-        this.protocol = protocol;
+        this.protocol = protocol.toLowerCase();
         this.cacheIp = cacheIp;
         this.cachePort = cachePort;
+        this.cacheManager = new CacheManager("server_files");
+        this.executor = Executors.newCachedThreadPool();
     }
 
     public void start() throws IOException {
@@ -20,23 +26,21 @@ public class Server {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             System.out.println("Server started on port " + port + " using protocol: " + protocol.toUpperCase());
             while (true) {
-                Socket clientSocket = serverSocket.accept();
-                new Thread(() -> {
-                    try {
-                        handleClient(clientSocket);
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }).start();
+                try {
+                    Socket clientSocket = serverSocket.accept();
+                    executor.execute(() -> handleClient(clientSocket));
+                } catch (IOException e) {
+                    System.err.println("Failed to accept client connection.");
+                }
             }
         }
     }
 
-    private void handleClient(Socket socket) throws IOException {
+    private void handleClient(Socket socket) {
         try (Transport transport = createTransport(socket)) {
             String command;
             while ((command = transport.receive()) != null) {
-                if (command.equalsIgnoreCase("quit")) {
+                if ("quit".equalsIgnoreCase(command)) {
                     System.out.println("Client has disconnected.");
                     break;
                 } else if (command.startsWith("put ")) {
@@ -45,26 +49,32 @@ public class Server {
                     handleGet(command.substring(4).trim(), transport);
                 } else {
                     transport.send("Unknown command");
-                    System.out.println("Received unknown command: " + command);
+                    System.err.println("Received unknown command: " + command);
                 }
             }
+        } catch (IOException e) {
+            System.err.println("Error handling client request.");
         }
     }
 
-    private void handlePut(String filename, Transport transport) throws IOException {
+    private void handlePut(String filename, Transport transport) {
         System.out.println("Received PUT request for: " + filename);
-        transport.send("READY");
-        String sizeStr = transport.receive();
-        long fileSize = Long.parseLong(sizeStr);
-        transport.send("SIZE_RECEIVED");
-        byte[] data = transport.receiveFile();
-        Path filePath = Paths.get("server_files", filename);
-        Files.write(filePath, data);
-        transport.send("UPLOAD_SUCCESS");
-        System.out.println("File '" + filename + "' received and saved.");
+        try {
+            transport.send("READY");
+            String sizeStr = transport.receive();
+            long fileSize = Long.parseLong(sizeStr);
+            transport.send("SIZE_RECEIVED");
+            byte[] data = transport.receiveFile();
+            Path filePath = Paths.get("server_files", filename);
+            Files.write(filePath, data);
+            transport.send("UPLOAD_SUCCESS");
+            System.out.println("File '" + filename + "' received and saved.");
+        } catch (IOException | NumberFormatException e) {
+            System.err.println("Error during file upload.");
+        }
     }
 
-    private void handleGet(String filename, Transport transport) throws IOException {
+    private void handleGet(String filename, Transport transport) {
         System.out.println("Received GET request for: " + filename);
         byte[] data = null;
         String deliverySource = null;
@@ -77,21 +87,29 @@ public class Server {
         } else {
             Path serverFilePath = Paths.get("server_files", filename);
             if (Files.exists(serverFilePath)) {
-                data = Files.readAllBytes(serverFilePath);
-                deliverySource = "server";
-                System.out.println("File delivered from server.");
-                storeFileInCache(filename, data);
+                try {
+                    data = Files.readAllBytes(serverFilePath);
+                    deliverySource = "server";
+                    System.out.println("File delivered from server.");
+                    storeFileInCache(filename, data);
+                } catch (IOException e) {
+                    System.err.println("Error reading file from server.");
+                }
             } else {
                 System.out.println("File not found on server: " + filename);
             }
         }
 
-        if (data != null) {
-            transport.send("READY");
-            transport.send(deliverySource);
-            transport.sendFile(data);
-        } else {
-            transport.send("ERROR: File '" + filename + "' not found on server.");
+        try {
+            if (data != null) {
+                transport.send("READY");
+                transport.send(deliverySource);
+                transport.sendFile(data);
+            } else {
+                transport.send("ERROR: File '" + filename + "' not found on server.");
+            }
+        } catch (IOException e) {
+            System.err.println("Error during file delivery.");
         }
     }
 
@@ -114,7 +132,7 @@ public class Server {
                 return null;
             }
         } catch (IOException e) {
-            System.out.println("Error communicating with cache service: " + e.getMessage());
+            System.err.println("Error communicating with cache service.");
             return null;
         }
     }
@@ -130,34 +148,37 @@ public class Server {
             dataOut.writeInt(data.length);
             dataOut.flush();
             dataOut.write(data);
-            dataOut.flush(); 
+            dataOut.flush();
             String response = dataIn.readUTF();
             if ("STORED".equals(response)) {
-                System.out.println("File '" + filename + "' stored in cache");
+                System.out.println("File '" + filename + "' stored in cache.");
             } else {
-                System.out.println("Failed to store file '" + filename + "' in cache");
+                System.err.println("Failed to store file '" + filename + "' in cache.");
             }
         } catch (IOException e) {
-            System.out.println("Error communicating with cache service: " + e.getMessage());
+            System.err.println("Error communicating with cache service.");
         }
     }
 
     private Transport createTransport(Socket socket) throws IOException {
-        if (protocol.equalsIgnoreCase("tcp")) {
-            return new TcpTransport(socket);
-        } else if (protocol.equalsIgnoreCase("snw")) {
-            return new SnwTransport(socket);
-        } else {
-            throw new IllegalArgumentException("Unknown protocol: " + protocol);
+        switch (protocol) {
+            case "tcp":
+                return new tcp_transport(socket);
+            case "snw":
+                return new snw_transport(socket);
+            default:
+                System.err.println("Unknown protocol: " + protocol);
+                socket.close();
+                throw new IllegalArgumentException("Unknown protocol: " + protocol);
         }
     }
 
     public static void main(String[] args) {
         try {
-            int port = 4040; // Default port
-            String protocol = "tcp"; // Default protocol
-            String cacheIp = "localhost"; // Default cache IP
-            int cachePort = 5050; // Default cache port
+            int port = 10000;
+            String protocol = "tcp";
+            String cacheIp = "localhost";
+            int cachePort = 20000;
 
             if (args.length >= 1) {
                 port = Integer.parseInt(args[0]);
@@ -172,13 +193,14 @@ public class Server {
                 cachePort = Integer.parseInt(args[3]);
             }
 
-            Server server = new Server(port, protocol, cacheIp, cachePort);
-            server.start();
+            server serverInstance = new server(port, protocol, cacheIp, cachePort);
+            serverInstance.start();
+        } catch (IllegalArgumentException e) {
+            System.err.println(e.getMessage());
+            System.out.println("Usage: java Server [port] [protocol] [cache ip] [cache port]");
         } catch (IOException e) {
-            e.printStackTrace();
-        } catch (NumberFormatException e) {
-            System.out.println("Invalid port number.");
-            System.out.println("Usage: java Server [port] [tcp/snw] [cache ip] [cache port]");
+            System.err.println("IO Exception occurred while starting the server.");
+            System.out.println("Usage: java Server [port] [protocol] [cache ip] [cache port]");
         }
     }
 }

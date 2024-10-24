@@ -1,16 +1,16 @@
 import java.io.*;
-import java.net.*;
+import java.net.Socket;
 
-public class SnwTransport implements Transport {
-    private Socket socket;
-    private DataInputStream dataIn;
-    private DataOutputStream dataOut;
+public class snw_transport implements Transport {
+    private final Socket socket;
+    private final DataInputStream dataIn;
+    private final DataOutputStream dataOut;
     private static final int CHUNK_SIZE = 1024;
 
-    public SnwTransport(Socket socket) throws IOException {
+    public snw_transport(Socket socket) throws IOException {
         this.socket = socket;
-        dataIn = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
-        dataOut = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
+        this.dataIn = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
+        this.dataOut = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
     }
 
     @Override
@@ -77,6 +77,8 @@ public class SnwTransport implements Transport {
 
     @Override
     public void close() throws IOException {
+        dataIn.close();
+        dataOut.close();
         socket.close();
     }
 }

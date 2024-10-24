@@ -2,11 +2,13 @@
 
 set -e
 
-javac CacheService.java
+javac cache.java
+javac CacheManager.java
+javac client.java
+javac ClientHandler.java
+javac server.java
+javac snw_transport.java
+javac tcp_transport.java
 javac Transport.java
-javac TcpTransport.java
-javac SnwTransport.java
-javac Server.java
-javac Client.java
 
 echo "Compilation completed successfully."

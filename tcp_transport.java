@@ -1,12 +1,12 @@
 import java.io.*;
-import java.net.*;
+import java.net.Socket;
 
-public class TcpTransport implements Transport {
-    private Socket socket;
-    private DataInputStream dataIn;
-    private DataOutputStream dataOut;
+public class tcp_transport implements Transport {
+    private final Socket socket;
+    private final DataInputStream dataIn;
+    private final DataOutputStream dataOut;
 
-    public TcpTransport(Socket socket) throws IOException {
+    public tcp_transport(Socket socket) throws IOException {
         this.socket = socket;
         this.dataIn = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
         this.dataOut = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
@@ -26,7 +26,6 @@ public class TcpTransport implements Transport {
     @Override
     public void sendFile(byte[] data) throws IOException {
         dataOut.writeInt(data.length);
-        dataOut.flush();
         dataOut.write(data);
         dataOut.flush();
     }
@@ -41,6 +40,8 @@ public class TcpTransport implements Transport {
 
     @Override
     public void close() throws IOException {
+        dataIn.close();
+        dataOut.close();
         socket.close();
     }
 }
