@@ -1,6 +1,9 @@
 import java.io.*;
-import java.net.*;
-import java.nio.file.*;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -175,25 +178,7 @@ public class server {
 
     public static void main(String[] args) {
         try {
-            int port = 10000;
-            String protocol = "tcp";
-            String cacheIp = "localhost";
-            int cachePort = 20000;
-
-            if (args.length >= 1) {
-                port = Integer.parseInt(args[0]);
-            }
-            if (args.length >= 2) {
-                protocol = args[1];
-            }
-            if (args.length >= 3) {
-                cacheIp = args[2];
-            }
-            if (args.length >= 4) {
-                cachePort = Integer.parseInt(args[3]);
-            }
-
-            server serverInstance = new server(port, protocol, cacheIp, cachePort);
+            server serverInstance = getServerInstance(args);
             serverInstance.start();
         } catch (IllegalArgumentException e) {
             System.err.println(e.getMessage());
@@ -202,5 +187,27 @@ public class server {
             System.err.println("IO Exception occurred while starting the server.");
             System.out.println("Usage: java Server [port] [protocol] [cache ip] [cache port]");
         }
+    }
+
+    private static server getServerInstance(String[] args) throws IOException {
+        int port = 10000;
+        String protocol = "tcp";
+        String cacheIp = "localhost";
+        int cachePort = 20000;
+
+        if (args.length >= 1) {
+            port = Integer.parseInt(args[0]);
+        }
+        if (args.length >= 2) {
+            protocol = args[1];
+        }
+        if (args.length >= 3) {
+            cacheIp = args[2];
+        }
+        if (args.length >= 4) {
+            cachePort = Integer.parseInt(args[3]);
+        }
+
+        return new server(port, protocol, cacheIp, cachePort);
     }
 }

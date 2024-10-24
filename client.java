@@ -1,6 +1,11 @@
-import java.io.*;
-import java.net.*;
-import java.nio.file.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 public class client {
     private final String serverAddress;
@@ -140,31 +145,7 @@ public class client {
 
     public static void main(String[] args) {
         try {
-            String serverIp = "localhost";      // Default server IP
-            int serverPort = 10000;             // Default server port
-            String cacheIp = "localhost";
-            int cachePort = 20000;
-
-            int clientPort = 20001;             // Default client port (0 means any available port)
-            String protocol = "tcp";            // Default protocol
-
-            if (args.length >= 1) {
-                serverIp = args[0];
-            }
-            if (args.length >= 2) {
-                serverPort = Integer.parseInt(args[1]);
-            }
-            if (args.length >= 3) {
-                cacheIp = args[2];
-            }
-            if (args.length >= 4) {
-                cachePort = Integer.parseInt(args[3]);
-            }
-            if (args.length >= 5) {
-                protocol = args[4];
-            }
-
-            client clientInstance = new client(clientPort, serverIp, serverPort, protocol);
+            client clientInstance = getClientInstance(args);
             clientInstance.start();
         } catch (IllegalArgumentException e) {
             System.err.println(e.getMessage());
@@ -173,5 +154,33 @@ public class client {
             System.err.println("IO Exception occurred while starting the client.");
             System.out.println("Usage: java Client [server ip] [server port] [client port] [protocol]");
         }
+    }
+
+    private static client getClientInstance(String[] args) throws IOException {
+        String serverIp = "localhost";
+        int serverPort = 10000;
+        String cacheIp = "localhost";
+        int cachePort = 20000;
+
+        int clientPort = 20001;
+        String protocol = "tcp";
+
+        if (args.length >= 1) {
+            serverIp = args[0];
+        }
+        if (args.length >= 2) {
+            serverPort = Integer.parseInt(args[1]);
+        }
+        if (args.length >= 3) {
+            cacheIp = args[2];
+        }
+        if (args.length >= 4) {
+            cachePort = Integer.parseInt(args[3]);
+        }
+        if (args.length >= 5) {
+            protocol = args[4];
+        }
+
+        return new client(clientPort, serverIp, serverPort, protocol);
     }
 }
