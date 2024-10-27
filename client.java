@@ -8,179 +8,175 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 public class client {
-    private final String serverAddress;
-    private final int clientPort;
-    private final int serverPort;
-    private final String protocol;
-    private final Transport transport;
+    private final String remoteServerIp;
+    private final int localClientPort;
+    private final int remoteServerPort;
+    private final String connectionProtocol;
+    private final DataTransport transportLayer;
 
-    public client(int clientPort, String serverAddress, int serverPort, String protocol) throws IOException {
-        this.clientPort = clientPort;
-        this.serverAddress = serverAddress;
-        this.serverPort = serverPort;
-        this.protocol = protocol.toLowerCase();
+    public client(int localClientPort, String remoteServerIp, int remoteServerPort, String connectionProtocol) throws IOException {
+        this.localClientPort = localClientPort;
+        this.remoteServerIp = remoteServerIp;
+        this.remoteServerPort = remoteServerPort;
+        this.connectionProtocol = connectionProtocol.toLowerCase();
 
-        Socket socket = initializeSocket();
-        this.transport = initializeTransport(socket);
-        System.out.println("Client started using protocol: " + protocol.toUpperCase());
+        Socket socket = setupSocket();
+        this.transportLayer = setupTransport(socket);
+        System.out.println("Client initiated using protocol: " + connectionProtocol.toUpperCase());
     }
 
-    private Socket initializeSocket() throws IOException {
-        Socket socket = new Socket();
-        if (clientPort > 0) {
-            socket.bind(new InetSocketAddress(clientPort));
+    public static void main(String[] args) {
+        try {
+            String serverIp = "localhost";
+            int serverPort = 10000;
+            String cacheIp = "localhost";
+            int cachePort = 20000;
+
+            int clientPort = 20001;
+            String protocol = "tcp";
+
+            if (args.length >= 1) {
+                serverIp = args[0];
+            }
+            if (args.length >= 2) {
+                serverPort = Integer.parseInt(args[1]);
+            }
+            if (args.length >= 3) {
+                cacheIp = args[2];
+            }
+            if (args.length >= 4) {
+                cachePort = Integer.parseInt(args[3]);
+            }
+            if (args.length >= 5) {
+                protocol = args[4];
+            }
+            client clientInstance = new client(clientPort, serverIp, serverPort, protocol);
+            clientInstance.startClient();
+        } catch (IllegalArgumentException | IOException e) {
+            System.out.println("Usage: java Client [server ip] [server port] [client port] [protocol]");
         }
-        socket.connect(new InetSocketAddress(serverAddress, serverPort));
+    }
+
+    private Socket setupSocket() throws IOException {
+        Socket socket = new Socket();
+        if (localClientPort > 0) {
+            socket.bind(new InetSocketAddress(localClientPort));
+        }
+        socket.connect(new InetSocketAddress(remoteServerIp, remoteServerPort));
         return socket;
     }
 
-    private Transport initializeTransport(Socket socket) throws IOException {
-        switch (protocol) {
+    private DataTransport setupTransport(Socket socket) throws IOException {
+        switch (connectionProtocol) {
             case "tcp":
                 return new tcp_transport(socket);
             case "snw":
                 return new snw_transport(socket);
             default:
-                System.err.println("Unknown protocol: " + protocol);
                 socket.close();
-                throw new IllegalArgumentException("Unknown protocol: " + protocol);
+                throw new IllegalArgumentException("Unsupported protocol: " + connectionProtocol);
         }
     }
 
-    public void start() {
-        try (BufferedReader console = new BufferedReader(new InputStreamReader(System.in))) {
-            String command;
+    public void startClient() {
+        try (BufferedReader consoleInput = new BufferedReader(new InputStreamReader(System.in))) {
+            String userCommand;
             System.out.println("Enter commands (put filename / get filename / quit):");
-            while ((command = console.readLine()) != null) {
-                if (command.equalsIgnoreCase("quit")) {
-                    System.out.println("Exiting client.");
-                    transport.send("quit");
+            while ((userCommand = consoleInput.readLine()) != null) {
+                if (userCommand.equalsIgnoreCase("quit")) {
+                    System.out.println("Client shutting down.");
+                    transportLayer.transmitMessage("quit");
                     break;
-                } else if (command.startsWith("put ")) {
-                    handlePut(command.substring(4).trim());
-                } else if (command.startsWith("get ")) {
-                    handleGet(command.substring(4).trim());
+                } else if (userCommand.startsWith("put ")) {
+                    executeUpload(userCommand.substring(4).trim());
+                } else if (userCommand.startsWith("get ")) {
+                    executeDownload(userCommand.substring(4).trim());
                 } else {
-                    transport.send(command);
-                    String response = transport.receive();
-                    System.out.println(response);
+                    transportLayer.transmitMessage(userCommand);
+                    String serverResponse = transportLayer.receiveMessage();
+                    System.out.println(serverResponse);
                 }
-                System.out.println("Enter next command (put filename / get filename / quit):");
+                System.out.println("Enter commands (put filename / get filename / quit):");
             }
         } catch (IOException e) {
             System.err.println("Error during client operation.");
         } finally {
             try {
-                transport.close();
+                transportLayer.close();
             } catch (IOException e) {
                 System.err.println("Error closing transport.");
             }
         }
     }
 
-    private void handlePut(String filename) {
-        Path filePath = Paths.get("client_files", filename);
-        if (!Files.exists(filePath)) {
+    private void executeUpload(String fileName) {
+        Path localFilePath = Paths.get("client_storage", fileName);
+        if (!Files.exists(localFilePath)) {
             System.out.println("File does not exist.");
             return;
         }
 
         try {
-            transport.send("put " + filename);
-            String response = transport.receive();
-            if ("READY".equalsIgnoreCase(response)) {
-                byte[] data = Files.readAllBytes(filePath);
-                transport.send(String.valueOf(data.length));
-                response = transport.receive();
-                if (!"SIZE_RECEIVED".equalsIgnoreCase(response)) {
-                    System.out.println("Server did not acknowledge file size.");
+            // Send upload command to server
+            transportLayer.transmitMessage("put " + fileName);
+            String serverResponse = transportLayer.receiveMessage();
+
+            // Confirm server is ready to receive
+            if ("READY".equalsIgnoreCase(serverResponse)) {
+                byte[] fileData = Files.readAllBytes(localFilePath);
+                transportLayer.transmitMessage(String.valueOf(fileData.length));
+                serverResponse = transportLayer.receiveMessage();
+
+                if (!"SIZE_CONFIRMED".equalsIgnoreCase(serverResponse)) {
+                    System.err.println("Server did not confirm file size.");
                     return;
                 }
-                transport.sendFile(data);
-                String serverResponse = transport.receive();
-                if ("UPLOAD_SUCCESS".equalsIgnoreCase(serverResponse)) {
-                    Files.delete(filePath);
+
+                // Transmit the file data
+                transportLayer.transmitFile(fileData);
+                String uploadResponse = transportLayer.receiveMessage();
+                if ("UPLOAD_SUCCESSFUL".equalsIgnoreCase(uploadResponse)) {
                     System.out.println("File uploaded successfully.");
                 } else {
-                    System.out.println("Server response: " + serverResponse);
+                    System.err.println("File upload failed with server response: " + uploadResponse);
                 }
             } else {
-                System.out.println("Server response: " + response);
+                System.err.println("Server not ready for file upload. Response: " + serverResponse);
             }
         } catch (IOException e) {
-            System.err.println("Error during file upload.");
+            System.err.println("Error during file upload: " + e.getMessage());
         }
     }
 
-    private void handleGet(String filename) {
+
+    private void executeDownload(String fileName) {
         try {
-            transport.send("get " + filename);
-            String response = transport.receive();
-            if ("READY".equalsIgnoreCase(response)) {
-                String deliverySource = transport.receive();
-                byte[] data = transport.receiveFile();
-                Path destination = Paths.get("client_files", filename);
-                Files.createDirectories(destination.getParent());
-                Files.write(destination, data);
-                switch (deliverySource.toLowerCase()) {
+            transportLayer.transmitMessage("get " + fileName);
+            String serverResponse = transportLayer.receiveMessage();
+            if ("READY".equalsIgnoreCase(serverResponse)) {
+                String source = transportLayer.receiveMessage();
+                byte[] fileData = transportLayer.receiveFileData();
+                Path destinationPath = Paths.get("client_storage", fileName);
+                Files.createDirectories(destinationPath.getParent());
+                Files.write(destinationPath, fileData);
+                switch (source.toLowerCase()) {
                     case "server":
-                        System.out.println("File delivered from server.");
+                        System.out.println("File downloaded from server.");
                         break;
                     case "cache":
-                        System.out.println("File delivered from cache.");
+                        System.out.println("File downloaded from cache.");
                         break;
                     default:
-                        System.out.println("File delivered from unknown source.");
+                        System.out.println("File source unknown.");
                         break;
                 }
-            } else if (response.startsWith("ERROR:")) {
+            } else if (serverResponse.startsWith("ERROR:")) {
                 System.out.println("File not found.");
             } else {
-                System.out.println("Unexpected server response.");
+                System.out.println("Unexpected response from server.");
             }
         } catch (IOException e) {
-            System.err.println("Error during file retrieval.");
+            System.err.println("Error during file download.");
         }
-    }
-
-    public static void main(String[] args) {
-        try {
-            client clientInstance = getClientInstance(args);
-            clientInstance.start();
-        } catch (IllegalArgumentException e) {
-            System.err.println(e.getMessage());
-            System.out.println("Usage: java Client [server ip] [server port] [client port] [protocol]");
-        } catch (IOException e) {
-            System.err.println("IO Exception occurred while starting the client.");
-            System.out.println("Usage: java Client [server ip] [server port] [client port] [protocol]");
-        }
-    }
-
-    private static client getClientInstance(String[] args) throws IOException {
-        String serverIp = "localhost";
-        int serverPort = 10000;
-        String cacheIp = "localhost";
-        int cachePort = 20000;
-
-        int clientPort = 20001;
-        String protocol = "tcp";
-
-        if (args.length >= 1) {
-            serverIp = args[0];
-        }
-        if (args.length >= 2) {
-            serverPort = Integer.parseInt(args[1]);
-        }
-        if (args.length >= 3) {
-            cacheIp = args[2];
-        }
-        if (args.length >= 4) {
-            cachePort = Integer.parseInt(args[3]);
-        }
-        if (args.length >= 5) {
-            protocol = args[4];
-        }
-
-        return new client(clientPort, serverIp, serverPort, protocol);
     }
 }

@@ -1,7 +1,7 @@
 import java.io.*;
 import java.net.Socket;
 
-public class snw_transport implements Transport {
+public class snw_transport implements DataTransport {
     private final Socket socket;
     private final DataInputStream dataIn;
     private final DataOutputStream dataOut;
@@ -14,7 +14,7 @@ public class snw_transport implements Transport {
     }
 
     @Override
-    public void send(String message) throws IOException {
+    public void transmitMessage(String message) throws IOException {
         dataOut.writeUTF(message);
         dataOut.flush();
         String ack = dataIn.readUTF();
@@ -24,7 +24,7 @@ public class snw_transport implements Transport {
     }
 
     @Override
-    public String receive() throws IOException {
+    public String receiveMessage() throws IOException {
         String message = dataIn.readUTF();
         dataOut.writeUTF("ACK");
         dataOut.flush();
@@ -32,7 +32,7 @@ public class snw_transport implements Transport {
     }
 
     @Override
-    public void sendFile(byte[] data) throws IOException {
+    public void transmitFile(byte[] data) throws IOException {
         dataOut.writeInt(data.length);
         dataOut.flush();
         String ack = dataIn.readUTF();
@@ -53,7 +53,7 @@ public class snw_transport implements Transport {
     }
 
     @Override
-    public byte[] receiveFile() throws IOException {
+    public byte[] receiveFileData() throws IOException {
         int fileSize = dataIn.readInt();
         dataOut.writeUTF("ACK");
         dataOut.flush();

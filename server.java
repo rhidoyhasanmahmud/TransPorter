@@ -8,206 +8,200 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class server {
-    private final int port;
-    private final int cachePort;
-    private final String cacheIp;
-    private final String protocol;
-    private final ExecutorService executor;
-    private final CacheManager cacheManager;
+    private final int serverPort;
+    private final int cacheServerPort;
+    private final String cacheServerIp;
+    private final String communicationProtocol;
+    private final ExecutorService clientExecutor;
+    private final CacheStorageManager cacheManager;
 
-    public server(int port, String protocol, String cacheIp, int cachePort) throws IOException {
-        this.port = port;
-        this.protocol = protocol.toLowerCase();
-        this.cacheIp = cacheIp;
-        this.cachePort = cachePort;
-        this.cacheManager = new CacheManager("server_files");
-        this.executor = Executors.newCachedThreadPool();
-    }
-
-    public void start() throws IOException {
-        Files.createDirectories(Paths.get("server_files"));
-        try (ServerSocket serverSocket = new ServerSocket(port)) {
-            System.out.println("Server started on port " + port + " using protocol: " + protocol.toUpperCase());
-            while (true) {
-                try {
-                    Socket clientSocket = serverSocket.accept();
-                    executor.execute(() -> handleClient(clientSocket));
-                } catch (IOException e) {
-                    System.err.println("Failed to accept client connection.");
-                }
-            }
-        }
-    }
-
-    private void handleClient(Socket socket) {
-        try (Transport transport = createTransport(socket)) {
-            String command;
-            while ((command = transport.receive()) != null) {
-                if ("quit".equalsIgnoreCase(command)) {
-                    System.out.println("Client has disconnected.");
-                    break;
-                } else if (command.startsWith("put ")) {
-                    handlePut(command.substring(4).trim(), transport);
-                } else if (command.startsWith("get ")) {
-                    handleGet(command.substring(4).trim(), transport);
-                } else {
-                    transport.send("Unknown command");
-                    System.err.println("Received unknown command: " + command);
-                }
-            }
-        } catch (IOException e) {
-            System.err.println("Error handling client request.");
-        }
-    }
-
-    private void handlePut(String filename, Transport transport) {
-        System.out.println("Received PUT request for: " + filename);
-        try {
-            transport.send("READY");
-            String sizeStr = transport.receive();
-            long fileSize = Long.parseLong(sizeStr);
-            transport.send("SIZE_RECEIVED");
-            byte[] data = transport.receiveFile();
-            Path filePath = Paths.get("server_files", filename);
-            Files.write(filePath, data);
-            transport.send("UPLOAD_SUCCESS");
-            System.out.println("File '" + filename + "' received and saved.");
-        } catch (IOException | NumberFormatException e) {
-            System.err.println("Error during file upload.");
-        }
-    }
-
-    private void handleGet(String filename, Transport transport) {
-        System.out.println("Received GET request for: " + filename);
-        byte[] data = null;
-        String deliverySource = null;
-
-        data = getFileFromCache(filename);
-
-        if (data != null) {
-            deliverySource = "cache";
-            System.out.println("File delivered from cache.");
-        } else {
-            Path serverFilePath = Paths.get("server_files", filename);
-            if (Files.exists(serverFilePath)) {
-                try {
-                    data = Files.readAllBytes(serverFilePath);
-                    deliverySource = "server";
-                    System.out.println("File delivered from server.");
-                    storeFileInCache(filename, data);
-                } catch (IOException e) {
-                    System.err.println("Error reading file from server.");
-                }
-            } else {
-                System.out.println("File not found on server: " + filename);
-            }
-        }
-
-        try {
-            if (data != null) {
-                transport.send("READY");
-                transport.send(deliverySource);
-                transport.sendFile(data);
-            } else {
-                transport.send("ERROR: File '" + filename + "' not found on server.");
-            }
-        } catch (IOException e) {
-            System.err.println("Error during file delivery.");
-        }
-    }
-
-    private byte[] getFileFromCache(String filename) {
-        System.out.println("Attempting to retrieve file from cache: " + filename);
-        try (Socket cacheSocket = new Socket(cacheIp, cachePort);
-             DataInputStream dataIn = new DataInputStream(new BufferedInputStream(cacheSocket.getInputStream()));
-             DataOutputStream dataOut = new DataOutputStream(new BufferedOutputStream(cacheSocket.getOutputStream()))) {
-
-            dataOut.writeUTF("GET " + filename);
-            dataOut.flush();
-            String response = dataIn.readUTF();
-            if ("FOUND".equals(response)) {
-                int size = dataIn.readInt();
-                byte[] data = new byte[size];
-                dataIn.readFully(data);
-                return data;
-            } else {
-                System.out.println("File not found in cache: " + filename);
-                return null;
-            }
-        } catch (IOException e) {
-            System.err.println("Error communicating with cache service.");
-            return null;
-        }
-    }
-
-    private void storeFileInCache(String filename, byte[] data) {
-        System.out.println("Storing file in cache: " + filename);
-        try (Socket cacheSocket = new Socket(cacheIp, cachePort);
-             DataInputStream dataIn = new DataInputStream(new BufferedInputStream(cacheSocket.getInputStream()));
-             DataOutputStream dataOut = new DataOutputStream(new BufferedOutputStream(cacheSocket.getOutputStream()))) {
-
-            dataOut.writeUTF("STORE " + filename);
-            dataOut.flush();
-            dataOut.writeInt(data.length);
-            dataOut.flush();
-            dataOut.write(data);
-            dataOut.flush();
-            String response = dataIn.readUTF();
-            if ("STORED".equals(response)) {
-                System.out.println("File '" + filename + "' stored in cache.");
-            } else {
-                System.err.println("Failed to store file '" + filename + "' in cache.");
-            }
-        } catch (IOException e) {
-            System.err.println("Error communicating with cache service.");
-        }
-    }
-
-    private Transport createTransport(Socket socket) throws IOException {
-        switch (protocol) {
-            case "tcp":
-                return new tcp_transport(socket);
-            case "snw":
-                return new snw_transport(socket);
-            default:
-                System.err.println("Unknown protocol: " + protocol);
-                socket.close();
-                throw new IllegalArgumentException("Unknown protocol: " + protocol);
-        }
+    public server(int serverPort, String communicationProtocol, String cacheServerIp, int cacheServerPort) throws IOException {
+        this.serverPort = serverPort;
+        this.communicationProtocol = communicationProtocol.toLowerCase();
+        this.cacheServerIp = cacheServerIp;
+        this.cacheServerPort = cacheServerPort;
+        this.cacheManager = new CacheStorageManager("server_storage");
+        this.clientExecutor = Executors.newCachedThreadPool();
     }
 
     public static void main(String[] args) {
         try {
-            server serverInstance = getServerInstance(args);
-            serverInstance.start();
+            int serverPort = 10000;
+            String protocol = "tcp";
+            String cacheServerIp = "localhost";
+            int cacheServerPort = 20000;
+
+            if (args.length >= 1) {
+                serverPort = Integer.parseInt(args[0]);
+            }
+            if (args.length >= 2) {
+                protocol = args[1];
+            }
+            if (args.length >= 3) {
+                cacheServerIp = args[2];
+            }
+            if (args.length >= 4) {
+                cacheServerPort = Integer.parseInt(args[3]);
+            }
+            server serverInstance = new server(serverPort, protocol, cacheServerIp, cacheServerPort);
+            serverInstance.initialize();
         } catch (IllegalArgumentException e) {
             System.err.println(e.getMessage());
-            System.out.println("Usage: java Server [port] [protocol] [cache ip] [cache port]");
         } catch (IOException e) {
-            System.err.println("IO Exception occurred while starting the server.");
-            System.out.println("Usage: java Server [port] [protocol] [cache ip] [cache port]");
+            System.out.println("Usage: java FileServer [port] [protocol] [cache ip] [cache port]");
         }
     }
 
-    private static server getServerInstance(String[] args) throws IOException {
-        int port = 10000;
-        String protocol = "tcp";
-        String cacheIp = "localhost";
-        int cachePort = 20000;
+    public void initialize() throws IOException {
+        Files.createDirectories(Paths.get("server_storage"));
+        try (ServerSocket serverSocket = new ServerSocket(serverPort)) {
+            System.out.println("Server active on port " + serverPort + " with protocol: " + communicationProtocol.toUpperCase());
+            while (true) {
+                try {
+                    Socket clientSocket = serverSocket.accept();
+                    clientExecutor.execute(() -> processClientRequest(clientSocket));
+                } catch (IOException e) {
+                    System.err.println("Client connection failed.");
+                }
+            }
+        }
+    }
 
-        if (args.length >= 1) {
-            port = Integer.parseInt(args[0]);
+    private DataTransport initializeTransport(Socket clientSocket) throws IOException {
+        switch (communicationProtocol) {
+            case "tcp":
+                return new tcp_transport(clientSocket);
+            case "snw":
+                return new snw_transport(clientSocket);
+            default:
+                clientSocket.close();
+                throw new IllegalArgumentException("Unsupported protocol: " + communicationProtocol);
         }
-        if (args.length >= 2) {
-            protocol = args[1];
+    }
+
+    private void processClientRequest(Socket clientSocket) {
+        try (DataTransport transportLayer = initializeTransport(clientSocket)) {
+            String clientCommand;
+            while ((clientCommand = transportLayer.receiveMessage()) != null) {
+                if ("quit".equalsIgnoreCase(clientCommand)) {
+                    System.out.println("Client disconnected.");
+                    break;
+                } else if (clientCommand.startsWith("put ")) {
+                    executePut(clientCommand.substring(4).trim(), transportLayer);
+                } else if (clientCommand.startsWith("get ")) {
+                    executeGet(clientCommand.substring(4).trim(), transportLayer);
+                } else {
+                    transportLayer.transmitMessage("Unknown command");
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Error processing client request.");
         }
-        if (args.length >= 3) {
-            cacheIp = args[2];
+    }
+
+    private void executePut(String fileName, DataTransport transportLayer) {
+        try {
+            // Prepare server for file reception
+            transportLayer.transmitMessage("READY");
+            String fileSizeStr = transportLayer.receiveMessage();
+            long fileSize = Long.parseLong(fileSizeStr);
+            transportLayer.transmitMessage("SIZE_CONFIRMED");
+
+            // Receive file data
+            byte[] fileData = transportLayer.receiveFileData();
+            Path filePath = Paths.get("server_storage", fileName);
+            Files.write(filePath, fileData);
+
+            // Confirm upload success
+            transportLayer.transmitMessage("UPLOAD_SUCCESSFUL");
+            System.out.println("File '" + fileName + "' received and stored.");
+        } catch (IOException | NumberFormatException e) {
+            System.err.println("File upload encountered an error: " + e.getMessage());
+            try {
+                transportLayer.transmitMessage("ERROR: File upload failed.");
+            } catch (IOException ignored) {}
         }
-        if (args.length >= 4) {
-            cachePort = Integer.parseInt(args[3]);
+    }
+
+
+    private void executeGet(String fileName, DataTransport transportLayer) {
+        byte[] fileData = fetchFileFromCache(fileName);
+        String sourceLocation = fileData != null ? "cache" : null;
+
+        if (fileData != null) {
+            System.out.println("File retrieved from cache.");
+        } else {
+            Path serverFilePath = Paths.get("server_storage", fileName);
+            if (Files.exists(serverFilePath)) {
+                try {
+                    fileData = Files.readAllBytes(serverFilePath);
+                    sourceLocation = "server";
+                    System.out.println("File retrieved from server.");
+                    storeInCache(fileName, fileData);
+                } catch (IOException e) {
+                    System.err.println("Error reading file from server storage.");
+                }
+            } else {
+                System.out.println("File not found on server: " + fileName);
+            }
         }
 
-        return new server(port, protocol, cacheIp, cachePort);
+        try {
+            if (fileData != null) {
+                transportLayer.transmitMessage("READY");
+                transportLayer.transmitMessage(sourceLocation);
+                transportLayer.transmitFile(fileData);
+            } else {
+                transportLayer.transmitMessage("ERROR: File '" + fileName + "' not found.");
+            }
+        } catch (IOException e) {
+            System.err.println("Error during file transmission.");
+        }
+    }
+
+    private byte[] fetchFileFromCache(String fileName) {
+        try (Socket cacheSocket = new Socket(cacheServerIp, cacheServerPort);
+             DataInputStream cacheDataIn = new DataInputStream(new BufferedInputStream(cacheSocket.getInputStream()));
+             DataOutputStream cacheDataOut = new DataOutputStream(new BufferedOutputStream(cacheSocket.getOutputStream()))) {
+
+            cacheDataOut.writeUTF("GET " + fileName);
+            cacheDataOut.flush();
+            String cacheResponse = cacheDataIn.readUTF();
+            if ("FOUND".equals(cacheResponse)) {
+                int dataSize = cacheDataIn.readInt();
+                byte[] fileData = new byte[dataSize];
+                cacheDataIn.readFully(fileData);
+                return fileData;
+            } else {
+                System.out.println("File not located in cache: " + fileName);
+                return null;
+            }
+        } catch (IOException e) {
+            System.err.println("Cache server communication error.");
+            return null;
+        }
+    }
+
+    private void storeInCache(String fileName, byte[] fileData) {
+        System.out.println("Saving file to cache: " + fileName);
+        try (Socket cacheSocket = new Socket(cacheServerIp, cacheServerPort);
+             DataInputStream cacheDataIn = new DataInputStream(new BufferedInputStream(cacheSocket.getInputStream()));
+             DataOutputStream cacheDataOut = new DataOutputStream(new BufferedOutputStream(cacheSocket.getOutputStream()))) {
+
+            cacheDataOut.writeUTF("STORE " + fileName);
+            cacheDataOut.flush();
+            cacheDataOut.writeInt(fileData.length);
+            cacheDataOut.flush();
+            cacheDataOut.write(fileData);
+            cacheDataOut.flush();
+            String cacheResponse = cacheDataIn.readUTF();
+            if ("STORED".equals(cacheResponse)) {
+                System.out.println("File '" + fileName + "' successfully stored in cache.");
+            } else {
+                System.err.println("Failed to store file '" + fileName + "' in cache.");
+            }
+        } catch (IOException e) {
+            System.err.println("Error communicating with cache server.");
+        }
     }
 }

@@ -42,8 +42,8 @@ build/
 cache.class
 server.class
 client.class
-Transport.class
-ClientHandler.class
-CacheManager.class
+DataTransport.class
+CacheClientHandler.class
+CacheStorageManager.class
 snw_transport.class
 tcp_transport.class
