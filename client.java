@@ -1,8 +1,7 @@
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.net.InetSocketAddress;
-import java.net.Socket;
+import java.net.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -20,9 +19,21 @@ public class client {
         this.serverPort = serverPort;
         this.protocol = protocol.toLowerCase();
 
-        Socket socket = initializeSocket();
-        this.transport = initializeTransport(socket);
+        this.transport = initializeTransport();
         System.out.println("Client started using protocol: " + protocol.toUpperCase());
+    }
+
+    private Transport initializeTransport() throws IOException {
+        switch (protocol) {
+            case "tcp":
+                Socket socket = initializeSocket();
+                return new tcp_transport(socket);
+            case "snw":
+                InetAddress serverInetAddress = InetAddress.getByName(serverAddress);
+                return new snw_transport(serverInetAddress, serverPort, clientPort);
+            default:
+                throw new IllegalArgumentException("Unknown protocol: " + protocol);
+        }
     }
 
     private Socket initializeSocket() throws IOException {
@@ -32,19 +43,6 @@ public class client {
         }
         socket.connect(new InetSocketAddress(serverAddress, serverPort));
         return socket;
-    }
-
-    private Transport initializeTransport(Socket socket) throws IOException {
-        switch (protocol) {
-            case "tcp":
-                return new tcp_transport(socket);
-            case "snw":
-                return new snw_transport(socket);
-            default:
-                System.err.println("Unknown protocol: " + protocol);
-                socket.close();
-                throw new IllegalArgumentException("Unknown protocol: " + protocol);
-        }
     }
 
     public void start() {
@@ -68,7 +66,7 @@ public class client {
                 System.out.println("Enter next command (put filename / get filename / quit):");
             }
         } catch (IOException e) {
-            System.err.println("Error during client operation.");
+            System.err.println("Error during client operation: " + e.getMessage());
         } finally {
             try {
                 transport.close();
@@ -99,7 +97,6 @@ public class client {
                 transport.sendFile(data);
                 String serverResponse = transport.receive();
                 if ("UPLOAD_SUCCESS".equalsIgnoreCase(serverResponse)) {
-                    Files.delete(filePath);
                     System.out.println("File uploaded successfully.");
                 } else {
                     System.out.println("Server response: " + serverResponse);
@@ -108,7 +105,7 @@ public class client {
                 System.out.println("Server response: " + response);
             }
         } catch (IOException e) {
-            System.err.println("Error during file upload.");
+            System.err.println("Error during file upload: " + e.getMessage());
         }
     }
 
@@ -139,7 +136,7 @@ public class client {
                 System.out.println("Unexpected server response.");
             }
         } catch (IOException e) {
-            System.err.println("Error during file retrieval.");
+            System.err.println("Error during file retrieval: " + e.getMessage());
         }
     }
 
@@ -149,10 +146,10 @@ public class client {
             clientInstance.start();
         } catch (IllegalArgumentException e) {
             System.err.println(e.getMessage());
-            System.out.println("Usage: java Client [server ip] [server port] [client port] [protocol]");
+            System.out.println("Usage: java client [server ip] [server port] [client port] [protocol]");
         } catch (IOException e) {
-            System.err.println("IO Exception occurred while starting the client.");
-            System.out.println("Usage: java Client [server ip] [server port] [client port] [protocol]");
+            System.err.println("IO Exception occurred while starting the client: " + e.getMessage());
+            System.out.println("Usage: java client [server ip] [server port] [client port] [protocol]");
         }
     }
 
@@ -180,7 +177,6 @@ public class client {
         if (args.length >= 5) {
             protocol = args[4];
         }
-
         return new client(clientPort, serverIp, serverPort, protocol);
     }
 }

@@ -1,6 +1,5 @@
 import java.io.*;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.net.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -26,12 +25,22 @@ public class server {
 
     public void start() throws IOException {
         Files.createDirectories(Paths.get("server_files"));
+        if ("tcp".equalsIgnoreCase(protocol)) {
+            startTCPServer();
+        } else if ("snw".equalsIgnoreCase(protocol)) {
+            startSNWServer();
+        } else {
+            throw new IllegalArgumentException("Unknown protocol: " + protocol);
+        }
+    }
+
+    private void startTCPServer() throws IOException {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             System.out.println("Server started on port " + port + " using protocol: " + protocol.toUpperCase());
             while (true) {
                 try {
                     Socket clientSocket = serverSocket.accept();
-                    executor.execute(() -> handleClient(clientSocket));
+                    executor.execute(() -> handleTCPClient(clientSocket));
                 } catch (IOException e) {
                     System.err.println("Failed to accept client connection.");
                 }
@@ -39,24 +48,41 @@ public class server {
         }
     }
 
-    private void handleClient(Socket socket) {
+    private void startSNWServer() {
+        System.out.println("Server started on port " + port + " using protocol: " + protocol.toUpperCase());
+        executor.execute(() -> handleSNWClient());
+    }
+
+    private void handleTCPClient(Socket socket) {
         try (Transport transport = createTransport(socket)) {
-            String command;
-            while ((command = transport.receive()) != null) {
-                if ("quit".equalsIgnoreCase(command)) {
-                    System.out.println("Client has disconnected.");
-                    break;
-                } else if (command.startsWith("put ")) {
-                    handlePut(command.substring(4).trim(), transport);
-                } else if (command.startsWith("get ")) {
-                    handleGet(command.substring(4).trim(), transport);
-                } else {
-                    transport.send("Unknown command");
-                    System.err.println("Received unknown command: " + command);
-                }
-            }
+            handleClient(transport);
         } catch (IOException e) {
-            System.err.println("Error handling client request.");
+            System.err.println("Error handling TCP client: " + e.getMessage());
+        }
+    }
+
+    private void handleSNWClient() {
+        try (Transport transport = new snw_transport(port)) {
+            handleClient(transport);
+        } catch (IOException e) {
+            System.err.println("Error handling SNW client: " + e.getMessage());
+        }
+    }
+
+    private void handleClient(Transport transport) throws IOException {
+        String command;
+        while ((command = transport.receive()) != null) {
+            if ("quit".equalsIgnoreCase(command)) {
+                System.out.println("Client has disconnected.");
+                break;
+            } else if (command.startsWith("put ")) {
+                handlePut(command.substring(4).trim(), transport);
+            } else if (command.startsWith("get ")) {
+                handleGet(command.substring(4).trim(), transport);
+            } else {
+                transport.send("Unknown command");
+                System.err.println("Received unknown command: " + command);
+            }
         }
     }
 
@@ -73,7 +99,7 @@ public class server {
             transport.send("UPLOAD_SUCCESS");
             System.out.println("File '" + filename + "' received and saved.");
         } catch (IOException | NumberFormatException e) {
-            System.err.println("Error during file upload.");
+            System.err.println("Error during file upload: " + e.getMessage());
         }
     }
 
@@ -112,7 +138,7 @@ public class server {
                 transport.send("ERROR: File '" + filename + "' not found on server.");
             }
         } catch (IOException e) {
-            System.err.println("Error during file delivery.");
+            System.err.println("Error during file delivery: " + e.getMessage());
         }
     }
 
@@ -135,7 +161,7 @@ public class server {
                 return null;
             }
         } catch (IOException e) {
-            System.err.println("Error communicating with cache service.");
+            System.err.println("Error communicating with cache service: " + e.getMessage());
             return null;
         }
     }
@@ -159,7 +185,7 @@ public class server {
                 System.err.println("Failed to store file '" + filename + "' in cache.");
             }
         } catch (IOException e) {
-            System.err.println("Error communicating with cache service.");
+            System.err.println("Error communicating with cache service: " + e.getMessage());
         }
     }
 
@@ -168,7 +194,7 @@ public class server {
             case "tcp":
                 return new tcp_transport(socket);
             case "snw":
-                return new snw_transport(socket);
+                throw new UnsupportedOperationException("SNW protocol does not use Socket for server");
             default:
                 System.err.println("Unknown protocol: " + protocol);
                 socket.close();
@@ -182,10 +208,10 @@ public class server {
             serverInstance.start();
         } catch (IllegalArgumentException e) {
             System.err.println(e.getMessage());
-            System.out.println("Usage: java Server [port] [protocol] [cache ip] [cache port]");
+            System.out.println("Usage: java server [port] [protocol] [cache ip] [cache port]");
         } catch (IOException e) {
-            System.err.println("IO Exception occurred while starting the server.");
-            System.out.println("Usage: java Server [port] [protocol] [cache ip] [cache port]");
+            System.err.println("IO Exception occurred while starting the server: " + e.getMessage());
+            System.out.println("Usage: java server [port] [protocol] [cache ip] [cache port]");
         }
     }
 

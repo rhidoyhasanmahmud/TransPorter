@@ -47,3 +47,6 @@ ClientHandler.class
 CacheManager.class
 snw_transport.class
 tcp_transport.class
+CacheClientHandler.class
+CacheStorageManager.class
+DataTransport.class
