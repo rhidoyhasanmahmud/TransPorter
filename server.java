@@ -54,16 +54,23 @@ public class server {
 
     public void initialize() throws IOException {
         Files.createDirectories(Paths.get("server_storage"));
-        try (ServerSocket serverSocket = new ServerSocket(serverPort)) {
-            System.out.println("Server active on port " + serverPort + " with protocol: " + communicationProtocol.toUpperCase());
-            while (true) {
-                try {
-                    Socket clientSocket = serverSocket.accept();
-                    clientExecutor.execute(() -> processClientRequest(clientSocket));
-                } catch (IOException e) {
-                    System.err.println("Client connection failed.");
+        if ("tcp".equalsIgnoreCase(communicationProtocol)) {
+            try (ServerSocket serverSocket = new ServerSocket(serverPort)) {
+                System.out.println("Server active on port " + serverPort + " with protocol: " + communicationProtocol.toUpperCase());
+                while (true) {
+                    try {
+                        Socket clientSocket = serverSocket.accept();
+                        clientExecutor.execute(() -> processClientRequest(clientSocket));
+                    } catch (IOException e) {
+                        System.err.println("Client connection failed.");
+                    }
                 }
             }
+        } else if ("snw".equalsIgnoreCase(communicationProtocol)) {
+            System.out.println("Server active on port " + serverPort + " with protocol: " + communicationProtocol.toUpperCase());
+            clientExecutor.execute(() -> processSNWRequests());
+        } else {
+            throw new IllegalArgumentException("Unsupported protocol: " + communicationProtocol);
         }
     }
 
@@ -72,7 +79,8 @@ public class server {
             case "tcp":
                 return new tcp_transport(clientSocket);
             case "snw":
-                return new snw_transport(clientSocket);
+                // This method won't be called for SNW
+                throw new UnsupportedOperationException("SNW protocol does not use Socket in this context");
             default:
                 clientSocket.close();
                 throw new IllegalArgumentException("Unsupported protocol: " + communicationProtocol);
@@ -96,6 +104,30 @@ public class server {
             }
         } catch (IOException e) {
             System.err.println("Error processing client request.");
+        }
+    }
+
+    private void processSNWRequests() {
+        try (snw_transport transportLayer = new snw_transport(serverPort)) {
+            String clientCommand;
+            while (true) {
+                clientCommand = transportLayer.receiveMessage();
+                if (clientCommand == null) {
+                    break;
+                }
+                if ("quit".equalsIgnoreCase(clientCommand)) {
+                    System.out.println("Client disconnected.");
+                    break;
+                } else if (clientCommand.startsWith("put ")) {
+                    executePut(clientCommand.substring(4).trim(), transportLayer);
+                } else if (clientCommand.startsWith("get ")) {
+                    executeGet(clientCommand.substring(4).trim(), transportLayer);
+                } else {
+                    transportLayer.transmitMessage("Unknown command");
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Error processing SNW client request: " + e.getMessage());
         }
     }
 

@@ -1,6 +1,7 @@
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.file.Files;
@@ -20,8 +21,7 @@ public class client {
         this.remoteServerPort = remoteServerPort;
         this.connectionProtocol = connectionProtocol.toLowerCase();
 
-        Socket socket = setupSocket();
-        this.transportLayer = setupTransport(socket);
+        this.transportLayer = setupTransport();
         System.out.println("Client initiated using protocol: " + connectionProtocol.toUpperCase());
     }
 
@@ -58,25 +58,30 @@ public class client {
     }
 
     private Socket setupSocket() throws IOException {
-        Socket socket = new Socket();
-        if (localClientPort > 0) {
-            socket.bind(new InetSocketAddress(localClientPort));
+        if ("tcp".equalsIgnoreCase(connectionProtocol)) {
+            Socket socket = new Socket();
+            if (localClientPort > 0) {
+                socket.bind(new InetSocketAddress(localClientPort));
+            }
+            socket.connect(new InetSocketAddress(remoteServerIp, remoteServerPort));
+            return socket;
         }
-        socket.connect(new InetSocketAddress(remoteServerIp, remoteServerPort));
-        return socket;
+        return null;
     }
 
-    private DataTransport setupTransport(Socket socket) throws IOException {
+    private DataTransport setupTransport() throws IOException {
         switch (connectionProtocol) {
             case "tcp":
+                Socket socket = setupSocket();
                 return new tcp_transport(socket);
             case "snw":
-                return new snw_transport(socket);
+                InetAddress serverAddress = InetAddress.getByName(remoteServerIp);
+                return new snw_transport(serverAddress, remoteServerPort, localClientPort);
             default:
-                socket.close();
                 throw new IllegalArgumentException("Unsupported protocol: " + connectionProtocol);
         }
     }
+
 
     public void startClient() {
         try (BufferedReader consoleInput = new BufferedReader(new InputStreamReader(System.in))) {
@@ -99,7 +104,7 @@ public class client {
                 System.out.println("Enter commands (put filename / get filename / quit):");
             }
         } catch (IOException e) {
-            System.err.println("Error during client operation.");
+            System.err.println("Error during client operation: " + e.getMessage());
         } finally {
             try {
                 transportLayer.close();
@@ -147,7 +152,6 @@ public class client {
             System.err.println("Error during file upload: " + e.getMessage());
         }
     }
-
 
     private void executeDownload(String fileName) {
         try {
